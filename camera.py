@@ -1,40 +1,47 @@
+import fastface as ff
 import cv2
-import mediapipe as mp
 
-# เริ่มต้น MediaPipe
-mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
+# Load FastFace model
+model = ff.FaceDetector.from_pretrained("lffd_slim")
 
-# เปิดกล้อง
-cap = cv2.VideoCapture(0)
+# เปิดกล้องหรืออ่านภาพจากไฟล์
+cap = cv2.VideoCapture(0)  # เปิดกล้อง webcam (หรือใส่ path ของไฟล์วิดีโอ)
 
-with mp_face_detection.FaceDetection(min_detection_confidence=0.2) as face_detection:
-    while cap.isOpened():
-        success, image = cap.read()
-        if not success:
-            print("ไม่สามารถเปิดกล้องได้")
-            break
+# กำหนดความละเอียด
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # ตั้งความกว้าง
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)  # ตั้งความสูง
 
-        # แปลงภาพเป็น RGB
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = face_detection.process(image_rgb)
+while True:
+    ret, frame = cap.read()  # อ่านภาพจากกล้อง
+    if not ret:
+        break
 
-        # ตรวจจับใบหน้า
-        if results.detections:
-            for detection in results.detections:
-                bboxC = detection.location_data.relative_bounding_box
-                h, w, _ = image.shape
-                bbox = int(bboxC.xmin * w), int(bboxC.ymin * h), int(bboxC.width * w), int(bboxC.height * h)
-                cv2.rectangle(image, bbox, (255, 0, 0), 2)
-                mp_drawing.draw_detection(image, detection)
+    # กลับภาพในแกน X (mirror)
+    frame = cv2.flip(frame, 1)  # 1 คือการกลับในแกน X
 
-        # กลับภาพในแกน x (mirror)
-        image = cv2.flip(image, 1)
+    # Detect faces in the frame
+    detections = model.predict(frame)
 
-        # แสดงภาพ
-        cv2.imshow('Face Detection', image)
-        if cv2.waitKey(5) & 0xFF == 27:  # กด Esc เพื่อออก
-            break
+    # วาดกรอบรอบใบหน้าที่ตรวจพบ
+    for detection in detections:
+        boxes = detection['boxes']  # ดึง boxes จากการตรวจจับ
+        scores = detection['scores']  # ดึงคะแนนความมั่นใจ
+
+        for box, score in zip(boxes, scores):  # ใช้ zip เพื่อรวม boxes กับ scores
+            if score >= 0.5:  # คะแนนความมั่นใจ
+                x1, y1, x2, y2 = box  # ดึงพิกัดจาก box
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                # แสดงคะแนนความมั่นใจ
+                text = f"{score:.2f}"
+                cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+    # แสดงภาพ
+    cv2.imshow("FastFace Detection", frame)
+
+    # กด 'q' เพื่อออกจากลูป
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
 cv2.destroyAllWindows()
